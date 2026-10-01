@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rain Target</title>
+<style>
+  :root { --yellow: #ffe56a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px 16px 120px; font-family: "Segoe UI", Arial, sans-serif; font-size: 1.2rem; color: #111; background: #f6f3ea; }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 2.4rem; margin: 0 0 8px; }
+  .quiet { color: #333; margin: 0 0 14px; }
+  label.q { display: block; font-weight: 800; margin: 16px 0 6px; }
+  input {
+    width: 100%; min-height: 58px; font: inherit; font-size: 1.4rem; font-weight: 800;
+    padding: 8px 12px; border-radius: 12px; border: 3px solid #c4a400; background: var(--yellow); color: #111;
+  }
+  .choices { display: flex; gap: 8px; }
+  .tile {
+    flex: 1; position: relative; display: flex; align-items: center; justify-content: center;
+    min-height: 64px; border-radius: 12px; border: 3px solid #222; background: #fff; color: #111;
+    font-weight: 800; text-align: center; padding: 8px;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  }
+  .tile input {
+    position: absolute; inset: 0; width: 100%; height: 100%; min-height: 64px;
+    margin: 0; opacity: 0.02; border: 0; background: transparent;
+  }
+  .tile:has(input:checked) {
+    background: #111; color: var(--yellow); -webkit-text-fill-color: var(--yellow); border-color: #111;
+  }
+  .ex button {
+    width: 100%; font: inherit; font-weight: 800; min-height: 56px; border-radius: 12px;
+    border: 3px solid #222; background: #fff; color: #111;
+    -webkit-appearance: none; appearance: none;
+  }
+  .answer { color: #fff; border-radius: 18px; padding: 16px; margin: 12px 0 18px; background: #243028; }
+  .answer.win { background: #157a3a; }
+  .answer.lose { background: #b42318; }
+  .need { margin: 0; font-size: 1.15rem; }
+  .num { font-size: 3.6rem; font-weight: 800; line-height: 1; margin: 4px 0; }
+  .row { display: grid; gap: 8px; }
+  @media (min-width: 520px) { .row.two { grid-template-columns: 1fr 1fr; } }
+  .ex { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+  .go-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; padding: 10px 16px 16px; background: #f6f3ea; }
+  .go-bar a {
+    display: flex; align-items: center; justify-content: center;
+    width: 100%; max-width: 640px; margin: 0 auto; min-height: 68px;
+    background: #111; color: var(--yellow); -webkit-text-fill-color: var(--yellow);
+    text-decoration: none; font-size: 1.4rem; font-weight: 800; border-radius: 12px;
+  }
+  .errors { color: #8d2018; font-weight: 800; }
+  details { margin-top: 14px; }
+  summary { font-weight: 800; min-height: 44px; }
+  .trace { white-space: pre-wrap; background: #111; color: var(--yellow); padding: 12px; border-radius: 12px; font-size: .95rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Rain Target</h1>
+  <p class="quiet">Pick your team. Green means your team is in front. Red means your team is behind. This is an estimate, not the official television number.</p>
+
+  <label class="q">Your team</label>
+  <div class="choices">
+    <label class="tile">First team<input type="radio" name="side" value="first" checked onchange="render()"></label>
+    <label class="tile">Chasing team<input type="radio" name="side" value="chase" onchange="render()"></label>
+  </div>
+
+  <div class="answer win" id="top">
+    <p class="need" id="need">First team: Your team is winning.</p>
+    <div class="num" id="big">218</div>
+    <p id="plain">To win, in 40 overs. A tie is 217. The chase is 5 behind the par of 45.</p>
+  </div>
+
+  <label class="q">How long is the match?</label>
+  <div class="choices">
+    <label class="tile">50 overs<input type="radio" name="format" value="50" checked onchange="pickFormat(50)"></label>
+    <label class="tile">20 overs<input type="radio" name="format" value="20" onchange="pickFormat(20)"></label>
+  </div>
+
+  <label class="q" for="t1score">First team’s score</label>
+  <input id="t1score" type="number" min="0" step="1" value="250" inputmode="numeric" oninput="render()">
+
+  <label class="q" for="t2overs">Overs the chase will get</label>
+  <input id="t2overs" type="number" min="0" max="50" step="1" value="40" inputmode="numeric" oninput="render()">
+
+  <label class="q">Has the chase started?</label>
+  <div class="choices">
+    <label class="tile">Not yet<input type="radio" name="chase" value="no" onchange="render()"></label>
+    <label class="tile">Yes<input type="radio" name="chase" value="yes" checked onchange="render()"></label>
+  </div>
+  <div id="liveBox">
+    <div class="row two">
+      <div>
+        <label class="q" for="t2score">Their score now</label>
+        <input id="t2score" type="number" min="0" step="1" value="40" inputmode="numeric" oninput="render()">
+      </div>
+      <div>
+        <label class="q" for="t2wickets">Wickets down</label>
+        <input id="t2wickets" type="number" min="0" max="10" step="1" value="1" inputmode="numeric" oninput="render()">
+      </div>
+    </div>
+    <label class="q" for="t2bowled">Overs already bowled</label>
+    <input id="t2bowled" type="number" min="0" max="50" step="1" value="12" inputmode="numeric" oninput="render()">
+  </div>
+
+  <label class="q">Did rain stop the chase?</label>
+  <div class="choices">
+    <label class="tile">No<input type="radio" name="rain" value="no" onchange="render()"></label>
+    <label class="tile">Yes<input type="radio" name="rain" value="yes" checked onchange="render()"></label>
+  </div>
+  <div id="rainBox">
+    <div class="row two">
+      <div>
+        <label class="q" for="stopOvers">Overs left when rain came</label>
+        <input id="stopOvers" type="number" min="0" max="50" step="1" value="38" inputmode="numeric" oninput="render()">
+      </div>
+      <div>
+        <label class="q" for="restartOvers">Overs left when play restarted</label>
+        <input id="restartOvers" type="number" min="0" max="50" step="1" value="28" inputmode="numeric" oninput="render()">
+      </div>
+    </div>
+    <label class="q" for="stopWickets">Wickets down when rain came</label>
+    <input id="stopWickets" type="number" min="0" max="9" step="1" value="1" inputmode="numeric" oninput="render()">
+  </div>
+
+  <p class="errors" id="errors"></p>
+  <details>
+    <summary>Extra, only if you need it</summary>
+    <label class="q" for="g50">G50, leave this at 245</label>
+    <input id="g50" type="number" value="245" oninput="render()">
+    <label class="q" for="minOvers">Minimum overs for a result (blank = ignore)</label>
+    <input id="minOvers" type="number" placeholder="blank" oninput="render()">
+    <label class="q">Was the first innings cut short?</label>
+    <div class="choices">
+      <label class="tile">No, it finished<input type="radio" name="done" value="yes" checked onchange="render()"></label>
+      <label class="tile">Yes, rain ended it<input type="radio" name="done" value="no" onchange="render()"></label>
+    </div>
+    <div id="cutBox" hidden>
+      <div class="row two">
+        <div>
+          <label class="q" for="endOvers">Overs left when it ended</label>
+          <input id="endOvers" type="number" min="0" value="10" inputmode="numeric" oninput="render()">
+        </div>
+        <div>
+          <label class="q" for="endWickets">Wickets down then</label>
+          <input id="endWickets" type="number" min="0" max="10" value="3" inputmode="numeric" oninput="render()">
+        </div>
+      </div>
+    </div>
+  </details>
+
+  <div class="ex">
+    <button type="button" onclick="preset1()">Example: 250, rain in the chase</button>
+    <button type="button" onclick="preset2()">Example: 300, chase cut to 20</button>
+  </div>
+  <p class="quiet">Educational Standard Edition estimate. International matches use licensed DLS software. A high score can be several runs different on television.</p>
+  <details>
+    <summary>Show the working</summary>
+    <div id="working"></div>
+  </details>
+</div>
+<div class="go-bar"><a href="#top" onclick="goTop(); return false;">OK — see result</a></div>
+<script>
+const STANDARD_EDITION = [
+[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+[3.6,3.6,3.6,3.6,3.6,3.5,3.5,3.4,3.2,2.5],
+[7.2,7.1,7.1,7.0,7.0,6.8,6.6,6.2,5.5,3.7],
+[10.6,10.5,10.4,10.3,10.2,9.9,9.5,8.7,7.2,4.2],
+[13.9,13.8,13.7,13.5,13.2,12.7,12.0,10.7,8.4,4.5],
+[17.2,17.0,16.8,16.5,16.1,15.4,14.3,12.5,9.4,4.6],
+[20.3,20.1,19.8,19.4,18.8,17.8,16.4,13.9,10.1,4.6],
+[23.4,23.1,22.7,22.2,21.4,20.1,18.2,15.2,10.5,4.7],
+[26.4,26.0,25.5,24.8,23.8,22.3,19.9,16.2,10.9,4.7],
+[29.3,28.9,28.2,27.4,26.1,24.2,21.4,17.1,11.2,4.7],
+[32.1,31.6,30.8,29.8,28.3,26.1,22.8,17.9,11.4,4.7],
+[34.9,34.2,33.4,32.1,30.4,27.8,24.0,18.5,11.5,4.7],
+[37.6,36.8,35.8,34.3,32.3,29.4,25.1,19.0,11.6,4.7],
+[40.2,39.3,38.1,36.5,34.2,30.8,26.1,19.5,11.7,4.7],
+[42.7,41.7,40.4,38.5,35.9,32.2,27.0,19.9,11.8,4.7],
+[45.2,44.1,42.6,40.5,37.6,33.5,27.8,20.2,11.8,4.7],
+[47.6,46.3,44.7,42.3,39.1,34.7,28.5,20.5,11.8,4.7],
+[49.9,48.5,46.7,44.1,40.6,35.8,29.2,20.7,11.9,4.7],
+[52.2,50.7,48.6,45.9,42.0,36.8,29.8,20.9,11.9,4.7],
+[54.4,52.8,50.5,47.5,43.4,37.7,30.3,21.1,11.9,4.7],
+[56.6,54.8,52.4,49.1,44.6,38.6,30.8,21.2,11.9,4.7],
+[58.7,56.7,54.1,50.6,45.8,39.4,31.2,21.3,11.9,4.7],
+[60.7,58.6,55.8,52.0,47.0,40.2,31.6,21.4,11.9,4.7],
+[62.7,60.4,57.4,53.4,48.0,40.9,32.0,21.5,11.9,4.7],
+[64.6,62.2,59.0,54.7,49.0,41.6,32.3,21.6,11.9,4.7],
+[66.5,63.9,60.5,56.0,50.0,42.2,32.6,21.6,11.9,4.7],
+[68.3,65.6,62.0,57.2,50.9,42.8,32.8,21.7,11.9,4.7],
+[70.1,67.2,63.4,58.4,51.8,43.3,33.0,21.7,11.9,4.7],
+[71.8,68.8,64.8,59.5,52.6,43.8,33.2,21.8,11.9,4.7],
+[73.5,70.3,66.1,60.5,53.4,44.2,33.4,21.8,11.9,4.7],
+[75.1,71.8,67.3,61.6,54.1,44.7,33.6,21.8,11.9,4.7],
+[76.7,73.2,68.6,62.5,54.8,45.1,33.7,21.9,11.9,4.7],
+[78.3,74.6,69.7,63.5,55.4,45.4,33.9,21.9,11.9,4.7],
+[79.8,75.9,70.9,64.4,56.0,45.8,34.0,21.9,11.9,4.7],
+[81.3,77.2,72.0,65.2,56.6,46.1,34.1,21.9,11.9,4.7],
+[82.7,78.5,73.0,66.0,57.2,46.4,34.2,21.9,11.9,4.7],
+[84.1,79.7,74.1,66.8,57.7,46.6,34.3,21.9,11.9,4.7],
+[85.4,80.9,75.0,67.6,58.2,46.9,34.4,21.9,11.9,4.7],
+[86.7,82.0,76.0,68.3,58.7,47.1,34.5,21.9,11.9,4.7],
+[88.0,83.1,76.9,69.0,59.1,47.4,34.5,22.0,11.9,4.7],
+[89.3,84.2,77.8,69.6,59.5,47.6,34.6,22.0,11.9,4.7],
+[90.5,85.3,78.7,70.3,59.9,47.8,34.6,22.0,11.9,4.7],
+[91.7,86.3,79.5,70.9,60.3,47.9,34.7,22.0,11.9,4.7],
+[92.8,87.3,80.3,71.4,60.7,48.1,34.7,22.0,11.9,4.7],
+[93.9,88.2,81.0,72.0,61.0,48.3,34.8,22.0,11.9,4.7],
+[95.0,89.1,81.8,72.5,61.3,48.4,34.8,22.0,11.9,4.7],
+[96.1,90.0,82.5,73.0,61.6,48.5,34.8,22.0,11.9,4.7],
+[97.1,90.9,83.2,73.5,61.9,48.6,34.9,22.0,11.9,4.7],
+[98.1,91.7,83.8,74.0,62.2,48.8,34.9,22.0,11.9,4.7],
+[99.1,92.6,84.5,74.4,62.5,48.9,34.9,22.0,11.9,4.7],
+[100.0,93.4,85.1,74.9,62.7,49.0,34.9,22.0,11.9,4.7]
+];
+function $(id){ return document.getElementById(id); }
+function n(id){ var v = $(id).value; return v === "" ? NaN : Number(v); }
+function fmt(x){ return (Math.round(x * 10) / 10).toString(); }
+function picked(name){
+  var el = document.querySelector('input[name="' + name + '"]:checked');
+  return el ? el.value : "";
+}
+function pickFormat(v){
+  if (v === 20) {
+    $("t2overs").value = 20;
+    var rain = document.querySelector('input[name="rain"][value="no"]');
+    if (rain) rain.checked = true;
+  }
+  if (v === 50 && Number($("t2overs").value) === 20) $("t2overs").value = 50;
+  render();
+}
+function resource(overs, wickets){
+  if (wickets >= 10) return { value: 0, text: "10 wickets, 0 left" };
+  var w = Math.max(0, Math.min(9, wickets | 0));
+  var o = Math.max(0, Math.min(50, overs | 0));
+  return { value: STANDARD_EDITION[o][w], text: o + " overs, " + w + " down = " + STANDARD_EDITION[o][w].toFixed(1) };
+}
+function goTop(){
+  render();
+  var el = $("top");
+  if (el && el.scrollIntoView) el.scrollIntoView(true);
+  window.scrollTo(0, 0);
+}
+function setRadio(name, value){
+  var el = document.querySelector('input[name="' + name + '"][value="' + value + '"]');
+  if (el) el.checked = true;
+}
+function preset1(){
+  setRadio("format", "50"); setRadio("chase", "yes"); setRadio("rain", "yes"); setRadio("done", "yes");
+  $("t1score").value = 250; $("t2overs").value = 40; $("t2score").value = 40;
+  $("t2wickets").value = 1; $("t2bowled").value = 12;
+  $("stopOvers").value = 38; $("restartOvers").value = 28; $("stopWickets").value = 1;
+  render();
+}
+function preset2(){
+  setRadio("format", "50"); setRadio("chase", "no"); setRadio("rain", "no"); setRadio("done", "yes");
+  $("t1score").value = 300; $("t2overs").value = 20;
+  render();
+}
+function render(){
+  var scheduled = Number(picked("format") || 50);
+  var chaseOn = picked("chase") !== "no";
+  var rainOn = picked("rain") === "yes";
+  var completed = picked("done") !== "no";
+  var yourSide = picked("side") === "chase" ? "chase" : "first";
+  $("liveBox").hidden = !chaseOn;
+  $("rainBox").hidden = !rainOn;
+  $("cutBox").hidden = completed;
+  var S = n("t1score"), chaseOvers = n("t2overs"), t2score = n("t2score"), t2wickets = n("t2wickets"), bowled = n("t2bowled");
+  var stopOvers = n("stopOvers"), restartOvers = n("restartOvers"), stopWickets = n("stopWickets");
+  var G50 = n("g50") || 245, endOvers = n("endOvers"), endWickets = n("endWickets");
+  var errors = [];
+  if (!isFinite(S) || S < 0) errors.push("Score cannot be blank or below 0.");
+  if (!isFinite(chaseOvers) || chaseOvers < 0 || chaseOvers > 50) errors.push("Chase overs must be 0 to 50.");
+  if (chaseOn) {
+    if (!isFinite(t2score) || t2score < 0) errors.push("Chase score cannot be below 0.");
+    if (!isFinite(t2wickets) || t2wickets < 0 || t2wickets > 10) errors.push("Wickets must be 0 to 10.");
+    if (!isFinite(bowled) || bowled < 0 || bowled > chaseOvers) errors.push("Overs bowled cannot pass the chase overs.");
+  }
+  if (rainOn && isFinite(restartOvers) && isFinite(stopOvers) && restartOvers > stopOvers) errors.push("Overs left cannot go up after the rain.");
+  $("errors").textContent = errors.join(" ");
+  var side = yourSide === "chase" ? "Chasing team" : "First team";
+  if (errors.length) {
+    $("top").className = "answer";
+    $("need").textContent = "They need";
+    $("big").textContent = "—";
+    $("plain").textContent = errors[0];
+    return;
+  }
+  var start = resource(scheduled, 0), R1 = start.value, R2 = start.value, lines = ["Start: " + start.text + "."];
+  if (!completed) {
+    var cut = resource(endOvers, Math.min(9, endWickets));
+    R1 = Math.max(0, R1 - cut.value);
+    lines.push("First innings cut. " + cut.text + ". R1 = " + fmt(R1) + ".");
+  } else lines.push("First innings finished. R1 = " + fmt(R1) + ".");
+  if (rainOn) {
+    var stop = resource(stopOvers, stopWickets), restart = resource(restartOvers, stopWickets);
+    var lost = Math.max(0, stop.value - restart.value);
+    R2 = Math.max(0, R2 - lost);
+    lines.push("Rain: " + stop.text + ", then " + restart.text + ". Lost " + fmt(lost) + ". R2 = " + fmt(R2) + ".");
+  } else if (chaseOvers !== scheduled) {
+    R2 = resource(chaseOvers, 0).value;
+    lines.push("Chase shortened. R2 = " + fmt(R2) + ".");
+  } else lines.push("No overs lost. R2 = " + fmt(R2) + ".");
+  var target, par;
+  if (Math.abs(R2 - R1) < 0.0005) { target = S + 1; par = S; }
+  else if (R2 < R1) { par = Math.floor(S * R2 / R1); target = par + 1; }
+  else { target = S + Math.floor((R2 - R1) * G50 / 100) + 1; par = target - 1; }
+  lines.push("Target " + target + ". Tie " + par + ".");
+  var live = null;
+  if (chaseOn) {
+    var left = Math.max(0, chaseOvers - bowled);
+    var used = Math.max(0, R2 - resource(left, t2wickets).value);
+    var livePar = Math.floor(R1 === 0 ? 0 : S * used / R1);
+    var label = t2score > livePar ? "ahead" : (t2score < livePar ? "behind" : "level");
+    live = { livePar: livePar, label: label, delta: Math.abs(t2score - livePar), score: t2score };
+    lines.push("Par " + livePar + ". Score " + t2score + " is " + label + ".");
+  }
+  var mood = "answer", verdict = "Chase has not started, so nobody is in front yet.";
+  if (live && live.score >= target) {
+    mood = yourSide === "chase" ? "answer win" : "answer lose";
+    verdict = yourSide === "chase" ? "Your team has won." : "Your team has lost. The chase is already home.";
+  } else if (live && t2wickets >= 10 && live.score < target) {
+    mood = yourSide === "first" ? "answer win" : "answer lose";
+    verdict = yourSide === "first" ? "Your team has won. The chase is all out." : "Your team is all out.";
+  } else if (live) {
+    if (live.label === "level") { mood = "answer level"; verdict = "Level. A tie if it ended now."; }
+    else if (yourSide === "chase") { mood = live.label === "ahead" ? "answer win" : "answer lose"; verdict = live.label === "ahead" ? "Your team is winning." : "Your team is losing."; }
+    else { mood = live.label === "ahead" ? "answer lose" : "answer win"; verdict = live.label === "ahead" ? "Your team is losing." : "Your team is winning."; }
+  }
+  $("top").className = mood;
+  $("need").textContent = side + ": " + verdict;
+  $("big").textContent = target;
+  var plain = "To win, in " + chaseOvers + " overs. A tie is " + par + ".";
+  if (live) {
+    if (live.label === "level") plain += " The chase is level with the par of " + live.livePar + ".";
+    else plain += " The chase is " + live.delta + " " + live.label + " the par of " + live.livePar + ".";
+  }
+  $("plain").textContent = plain;
+  $("working").innerHTML = "<div class='trace'>" + lines.join("\n") + "</div>";
+}
+preset1();
+</script>
+</body>
+</html>
