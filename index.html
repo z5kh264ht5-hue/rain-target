@@ -159,7 +159,7 @@
     <button type="button" onclick="preset1()">Example: 250, rain in the chase</button>
     <button type="button" onclick="preset2()">Example: 300, chase cut to 20</button>
   </div>
-  <p class="quiet">Educational Standard Edition estimate. International matches use licensed DLS software. A high score can be several runs different on television.</p>
+  <p class="quiet">Educational estimate. A high first-innings score lifts the par toward the television figure. It is still not the official licensed number.</p>
   <details>
     <summary>Show the working</summary>
     <div id="working"></div>
@@ -241,6 +241,21 @@ function resource(overs, wickets){
   var w = Math.max(0, Math.min(9, wickets | 0));
   var o = Math.max(0, Math.min(50, overs | 0));
   return { value: STANDARD_EDITION[o][w], text: o + " overs, " + w + " down = " + STANDARD_EDITION[o][w].toFixed(1) };
+}
+function matchFactor(score, overs, G50){
+  var avg = G50 * overs / 50;
+  if (!avg || !isFinite(score)) return 1;
+  var x = score / avg;
+  if (x < 0.7) x = 0.7;
+  if (x > 1.8) x = 1.8;
+  return x;
+}
+function liftUsed(used, cap, factor){
+  if (used <= 0 || factor === 1) return used;
+  var adj = used * Math.pow(factor, 0.4);
+  if (adj > cap) adj = cap;
+  if (adj < 0) adj = 0;
+  return adj;
 }
 function goTop(){
   var active = document.activeElement;
@@ -335,10 +350,12 @@ function render(){
     var left = rainCut ? Math.max(0, restartOvers) : Math.max(0, chaseOvers - bowled);
     if (rainEnded) left = Math.max(0, (rainCut ? restartOvers : chaseOvers) - bowled);
     var used = Math.max(0, R2 - resource(left, t2wickets).value);
-    var livePar = Math.floor(R1 === 0 ? 0 : S * used / R1);
+    var factor = matchFactor(S, scheduled, G50);
+    var usedLift = liftUsed(used, R2, factor);
+    var livePar = Math.floor(R1 === 0 ? 0 : S * usedLift / R1);
     var label = t2score > livePar ? "ahead" : (t2score < livePar ? "behind" : "level");
     live = { livePar: livePar, label: label, delta: Math.abs(t2score - livePar), score: t2score, left: left };
-    lines.push("Overs left " + left + ". Par " + livePar + ". Score " + t2score + " is " + label + ".");
+    lines.push("Overs left " + left + ". Table par " + Math.floor(R1 === 0 ? 0 : S * used / R1) + ". High-score lift " + fmt(factor) + " makes par " + livePar + ". Score " + t2score + " is " + label + ".");
   }
   var mood = "answer", verdict = "Chase has not started, so nobody is in front yet.";
   var big = target;
