@@ -38,7 +38,8 @@
   .answer { color: #fff; border-radius: 18px; padding: 16px; margin: 12px 0 18px; background: #243028; }
   .answer.win { background: #157a3a; }
   .answer.lose { background: #b42318; }
-  .answer.level { background: #3d4a57; }
+  .answer.level { background: #ffe56a; color: #111; }
+  .balls { margin: 4px 0 0; font-size: 1.05rem; font-weight: 800; }
   .need { margin: 0; font-size: 1.15rem; }
   .num { font-size: 3.6rem; font-weight: 800; line-height: 1; margin: 4px 0; }
   .row { display: grid; gap: 8px; }
@@ -61,7 +62,7 @@
 <body>
 <div class="wrap">
   <h1>Rain Target</h1>
-  <p class="quiet">Pick your team. Green means your team is in front. Red means your team is behind. This is an estimate, not the official television number.</p>
+  <p class="quiet">Green is a clear lead. Red is a clear deficit. Yellow means too close — do not call a winner. A small lead can go the other way on television.</p>
 
   <label class="q">Your team</label>
   <div class="choices">
@@ -85,7 +86,8 @@
   <input id="t1score" type="number" min="0" step="1" value="250" inputmode="numeric" oninput="render()" onchange="render()" onblur="render()">
 
   <label class="q" for="t2overs">Overs the chase will get</label>
-  <input id="t2overs" type="number" min="0" max="50" step="1" value="40" inputmode="numeric" oninput="render()" onchange="render()" onblur="render()">
+  <input id="t2overs" type="number" min="0" max="50" step="0.1" value="40" inputmode="decimal" oninput="render()" onchange="render()" onblur="render()">
+  <p class="balls" id="t2oversBalls"></p>
 
   <label class="q">What did the rain do?</label>
   <div class="choices">
@@ -98,11 +100,13 @@
     <div class="row two">
       <div>
         <label class="q" for="stopOvers">Overs left when the rain came</label>
-        <input id="stopOvers" type="number" min="0" max="50" step="1" value="38" inputmode="numeric" oninput="render()" onchange="render()" onblur="render()">
+        <input id="stopOvers" type="number" min="0" max="50" step="0.1" value="38" inputmode="decimal" oninput="render()" onchange="render()" onblur="render()">
+        <p class="balls" id="stopOversBalls"></p>
       </div>
       <div>
         <label class="q" for="restartOvers">Overs left when they came back</label>
-        <input id="restartOvers" type="number" min="0" max="50" step="1" value="28" inputmode="numeric" oninput="render()" onchange="render()" onblur="render()">
+        <input id="restartOvers" type="number" min="0" max="50" step="0.1" value="28" inputmode="decimal" oninput="render()" onchange="render()" onblur="render()">
+        <p class="balls" id="restartOversBalls"></p>
       </div>
     </div>
     <label class="q" for="stopWickets">Wickets down when the rain came</label>
@@ -126,7 +130,8 @@
       </div>
     </div>
     <label class="q" for="t2bowled">Overs already bowled</label>
-    <input id="t2bowled" type="number" min="0" max="50" step="1" value="12" inputmode="numeric" oninput="render()" onchange="render()" onblur="render()">
+    <input id="t2bowled" type="number" min="0" max="50" step="0.1" value="12" inputmode="decimal" oninput="render()" onchange="render()" onblur="render()">
+    <p class="balls" id="t2bowledBalls"></p>
   </div>
 
   <p class="errors" id="errors"></p>
@@ -145,7 +150,8 @@
       <div class="row two">
         <div>
           <label class="q" for="endOvers">Overs left when it ended</label>
-          <input id="endOvers" type="number" min="0" value="10" inputmode="numeric" oninput="render()" onchange="render()" onblur="render()">
+          <input id="endOvers" type="number" min="0" step="0.1" value="10" inputmode="decimal" oninput="render()" onchange="render()" onblur="render()">
+          <p class="balls" id="endOversBalls"></p>
         </div>
         <div>
           <label class="q" for="endWickets">Wickets down then</label>
@@ -158,8 +164,11 @@
   <div class="ex">
     <button type="button" onclick="preset1()">Example: 250, rain in the chase</button>
     <button type="button" onclick="preset2()">Example: 300, chase cut to 20</button>
+    <button type="button" onclick="presetPak()">India 328, chase cut to 47</button>
+    <button type="button" onclick="presetEng()">Lord’s 280, stopped at 48.5</button>
+    <button type="button" onclick="presetT20()">T20 173, stopped at 5</button>
   </div>
-  <p class="quiet">Educational estimate. A high first-innings score lifts the par toward the television figure. It is still not the official licensed number.</p>
+  <p class="quiet">Type 47.5 for 47 overs and 5 balls. Six balls is the next over, so 48, not 47.6. A tie is yellow. International television uses the Professional Edition, so these three matches will not land on the official number.</p>
   <details>
     <summary>Show the working</summary>
     <div id="working"></div>
@@ -227,35 +236,54 @@ function picked(name){
   var el = document.querySelector('input[name="' + name + '"]:checked');
   return el ? el.value : "";
 }
-function pickFormat(v){
-  if (v === 20) {
-    $("t2overs").value = 20;
-    var rain = document.querySelector('input[name="rain"][value="no"]');
-    if (rain) rain.checked = true;
+function parseOvers(raw){
+  if (raw === "" || raw == null) return { ok: false, blank: true };
+  var s = String(raw).trim();
+  if (s === "" || s === "-" || s === ".") return { ok: false, blank: true };
+  if (s.charAt(0) === "-") return { ok: false, reason: "low" };
+  var parts = s.split(".");
+  if (parts.length > 2) return { ok: false, reason: "balls" };
+  var overs = parseInt(parts[0], 10);
+  if (!isFinite(overs)) return { ok: false, reason: "balls" };
+  var balls = 0;
+  if (parts.length === 2 && parts[1] !== "") {
+    var frac = parts[1];
+    if (frac.length > 2 || (frac.length === 2 && frac.charAt(1) !== "0")) return { ok: false, reason: "balls" };
+    balls = parseInt(frac.charAt(0), 10);
+    if (balls > 5) return { ok: false, reason: "balls" };
   }
+  return {
+    ok: true,
+    overs: overs + balls / 6,
+    totalBalls: overs * 6 + balls,
+    label: overs + "." + balls,
+    pretty: balls ? (overs + " overs and " + balls + " balls · " + (overs * 6 + balls) + " balls") : (overs + " overs · " + (overs * 6) + " balls"),
+    spoken: balls ? (overs + "." + balls) : String(overs)
+  };
+}
+function showBalls(id){
+  var el = $(id + "Balls");
+  if (!el) return;
+  var parsed = parseOvers($(id).value);
+  el.textContent = parsed.ok ? parsed.pretty : "";
+}
+function pickFormat(v){
+  if (v === 20 && Number($("t2overs").value) === 50) $("t2overs").value = 20;
   if (v === 50 && Number($("t2overs").value) === 20) $("t2overs").value = 50;
   render();
 }
 function resource(overs, wickets){
   if (wickets >= 10) return { value: 0, text: "10 wickets, 0 left" };
   var w = Math.max(0, Math.min(9, wickets | 0));
-  var o = Math.max(0, Math.min(50, overs | 0));
-  return { value: STANDARD_EDITION[o][w], text: o + " overs, " + w + " down = " + STANDARD_EDITION[o][w].toFixed(1) };
-}
-function matchFactor(score, overs, G50){
-  var avg = G50 * overs / 50;
-  if (!avg || !isFinite(score)) return 1;
-  var x = score / avg;
-  if (x < 0.7) x = 0.7;
-  if (x > 1.8) x = 1.8;
-  return x;
-}
-function liftUsed(used, cap, factor){
-  if (used <= 0 || factor === 1) return used;
-  var adj = used * Math.pow(factor, 0.4);
-  if (adj > cap) adj = cap;
-  if (adj < 0) adj = 0;
-  return adj;
+  var o = Math.max(0, Math.min(50, overs));
+  var lo = Math.floor(o);
+  var hi = Math.min(50, lo + 1);
+  var frac = o - lo;
+  var v = STANDARD_EDITION[lo][w];
+  if (hi !== lo && frac > 0) v = v + (STANDARD_EDITION[hi][w] - v) * frac;
+  var balls = Math.round((o - lo) * 6);
+  var label = lo + "." + balls;
+  return { value: v, text: label + " overs, " + w + " down = " + v.toFixed(1) };
 }
 function goTop(){
   var active = document.activeElement;
@@ -275,18 +303,48 @@ function setRadio(name, value){
   if (el) el.checked = true;
 }
 function preset1(){
-  setRadio("format", "50"); setRadio("chase", "yes"); setRadio("rain", "cut"); setRadio("done", "yes");
+  officialNote = "";
+  setRadio("format", "50"); setRadio("side", "first"); setRadio("chase", "yes"); setRadio("rain", "cut"); setRadio("done", "yes");
   $("t1score").value = 250; $("t2overs").value = 40; $("t2score").value = 40;
   $("t2wickets").value = 1; $("t2bowled").value = 12;
   $("stopOvers").value = 38; $("restartOvers").value = 28; $("stopWickets").value = 1;
   render();
 }
 function preset2(){
-  setRadio("format", "50"); setRadio("chase", "no"); setRadio("rain", "no"); setRadio("done", "yes");
+  officialNote = "";
+  setRadio("format", "50"); setRadio("side", "first"); setRadio("chase", "no"); setRadio("rain", "no"); setRadio("done", "yes");
   $("t1score").value = 300; $("t2overs").value = 20;
   render();
 }
+function presetPak(){
+  officialNote = "Official target was 305 from 47 overs. Pakistan made 311 and won by 7. That is the Professional Edition.";
+  keepOfficial = true;
+  setRadio("format", "50"); setRadio("side", "chase"); setRadio("chase", "yes"); setRadio("rain", "ended"); setRadio("done", "yes");
+  $("t1score").value = 328; $("t2overs").value = 47; $("t2score").value = 311;
+  $("t2wickets").value = 7; $("t2bowled").value = 47;
+  render();
+}
+function presetEng(){
+  officialNote = "Official target was 271 from 48.5 overs. England made 270, so it was a tie. That is the Professional Edition.";
+  keepOfficial = true;
+  setRadio("format", "50"); setRadio("side", "first"); setRadio("chase", "yes"); setRadio("rain", "ended"); setRadio("done", "yes");
+  $("t1score").value = 280; $("t2overs").value = 48.5; $("t2score").value = 270;
+  $("t2wickets").value = 8; $("t2bowled").value = 48.5;
+  render();
+}
+function presetT20(){
+  officialNote = "Official par was 43, so 44 was needed. Sri Lanka won by 14. Rain had already come once, after 1 over, before it ended at 5.";
+  keepOfficial = true;
+  setRadio("format", "20"); setRadio("side", "first"); setRadio("chase", "yes"); setRadio("rain", "ended"); setRadio("done", "yes");
+  $("t1score").value = 173; $("t2overs").value = 20; $("t2score").value = 29;
+  $("t2wickets").value = 1; $("t2bowled").value = 5;
+  render();
+}
+var officialNote = "";
+var keepOfficial = false;
 function render(){
+  if (!keepOfficial) officialNote = "";
+  keepOfficial = false;
   var scheduled = Number(picked("format") || 50);
   var chaseOn = picked("chase") !== "no";
   var rainMode = picked("rain") || "no";
@@ -298,24 +356,47 @@ function render(){
   $("rainBox").hidden = !rainCut;
   $("t2overs").previousElementSibling.hidden = rainCut;
   $("t2overs").hidden = rainCut;
+  if ($("t2oversBalls")) $("t2oversBalls").hidden = rainCut;
   $("cutBox").hidden = completed;
-  var S = n("t1score"), chaseOvers = n("t2overs"), t2score = n("t2score"), t2wickets = n("t2wickets"), bowled = n("t2bowled");
-  var stopOvers = n("stopOvers"), restartOvers = n("restartOvers"), stopWickets = n("stopWickets");
-  var G50 = n("g50") || 245, endOvers = n("endOvers"), endWickets = n("endWickets");
-  if (rainCut) chaseOvers = chaseOn ? bowled + restartOvers : restartOvers;
-  var hint = "No rain. The chase keeps the overs you typed above.";
-  if (rainCut) hint = "They came back with fewer overs. The chase is now " + chaseOvers + " overs, not the full match.";
-  if (rainEnded) hint = "Rain stopped the match. The big number is the tie score, not a target still to chase.";
+  ["t2overs", "stopOvers", "restartOvers", "t2bowled", "endOvers"].forEach(showBalls);
+  var S = n("t1score");
+  var chaseParsed = parseOvers($("t2overs").value);
+  var bowledParsed = parseOvers($("t2bowled").value);
+  var stopParsed = parseOvers($("stopOvers").value);
+  var restartParsed = parseOvers($("restartOvers").value);
+  var endParsed = parseOvers($("endOvers").value);
+  var t2score = n("t2score"), t2wickets = n("t2wickets");
+  var stopWickets = n("stopWickets");
+  var G50 = n("g50") || 245, endWickets = n("endWickets");
+  var chaseOvers = chaseParsed.ok ? chaseParsed.overs : NaN;
+  var bowled = bowledParsed.ok ? bowledParsed.overs : NaN;
+  var stopOvers = stopParsed.ok ? stopParsed.overs : NaN;
+  var restartOvers = restartParsed.ok ? restartParsed.overs : NaN;
+  var endOvers = endParsed.ok ? endParsed.overs : NaN;
+  if (rainCut && bowledParsed.ok && restartParsed.ok) chaseOvers = chaseOn ? bowled + restartOvers : restartOvers;
+  var chaseLabel = chaseParsed.ok ? chaseParsed.label : "";
+  if (rainCut && bowledParsed.ok && restartParsed.ok) {
+    var totalBalls = Math.round(chaseOvers * 6);
+    chaseLabel = Math.floor(totalBalls / 6) + "." + (totalBalls % 6);
+  }
+  var hint = "No rain. The chase keeps the overs you typed above. 47.5 means 5 balls.";
+  if (rainCut) hint = "They came back with fewer overs. The chase is now " + chaseLabel + " overs, not the full match.";
+  if (rainEnded) hint = "Rain stopped the match. The big number is the tie score. If the overs were cut, set Overs the chase will get to the new length.";
   $("rainHint").textContent = hint;
   var errors = [];
   if (!isFinite(S) || S < 0) errors.push("Score cannot be blank or below 0.");
-  if (!isFinite(chaseOvers) || chaseOvers < 0 || chaseOvers > 50) errors.push("Chase overs must be 0 to 50.");
+  if (!rainCut && !chaseParsed.ok) errors.push(chaseParsed.reason === "balls" ? "47.6 is not used. Six balls is the next over, so type 48." : "Chase overs cannot be blank.");
+  if (!rainCut && chaseParsed.ok && (chaseOvers < 0 || chaseOvers > 50)) errors.push("Chase overs must be 0 to 50.");
   if (chaseOn) {
     if (!isFinite(t2score) || t2score < 0) errors.push("Chase score cannot be below 0.");
     if (!isFinite(t2wickets) || t2wickets < 0 || t2wickets > 10) errors.push("Wickets must be 0 to 10.");
-    if (!isFinite(bowled) || bowled < 0 || bowled > chaseOvers) errors.push("Overs bowled cannot pass the chase overs.");
+    if (!bowledParsed.ok) errors.push(bowledParsed.reason === "balls" ? "47.6 is not used. Six balls is the next over, so type 48." : "Overs bowled cannot be blank.");
+    if (bowledParsed.ok && (bowled < 0 || bowled > chaseOvers + 0.001)) errors.push("Overs bowled cannot pass the chase overs.");
   }
-  if (rainCut && isFinite(restartOvers) && isFinite(stopOvers) && restartOvers > stopOvers) errors.push("Overs left cannot go up after the rain.");
+  if (rainCut && !stopParsed.ok) errors.push("Overs left when the rain came needs a number like 38 or 38.2.");
+  if (rainCut && !restartParsed.ok) errors.push("Overs left when they came back needs a number like 28 or 28.4.");
+  if (rainCut && stopParsed.ok && restartParsed.ok && restartOvers > stopOvers + 0.001) errors.push("Overs left cannot go up after the rain.");
+  if (!completed && !endParsed.ok) errors.push("Overs left when the first innings ended needs a number.");
   $("errors").textContent = errors.join(" ");
   var side = yourSide === "chase" ? "Chasing team" : "First team";
   if (errors.length) {
@@ -335,10 +416,10 @@ function render(){
     var stop = resource(stopOvers, stopWickets), restart = resource(restartOvers, stopWickets);
     var lost = Math.max(0, stop.value - restart.value);
     R2 = Math.max(0, start.value - lost);
-    lines.push("Rain cut the overs. " + stop.text + ", then " + restart.text + ". Lost " + fmt(lost) + ". R2 = " + fmt(R2) + ". Chase is " + chaseOvers + " overs.");
-  } else if (chaseOvers !== scheduled) {
+    lines.push("Rain cut the overs. " + stop.text + ", then " + restart.text + ". Lost " + fmt(lost) + ". R2 = " + fmt(R2) + ". Chase is " + chaseLabel + " overs.");
+  } else if (Math.abs(chaseOvers - scheduled) > 0.001) {
     R2 = resource(chaseOvers, 0).value;
-    lines.push("Chase shortened. R2 = " + fmt(R2) + ".");
+    lines.push("Chase shortened to " + chaseLabel + ". R2 = " + fmt(R2) + ".");
   } else lines.push("No overs lost. R2 = " + fmt(R2) + ".");
   var target, par;
   if (Math.abs(R2 - R1) < 0.0005) { target = S + 1; par = S; }
@@ -348,18 +429,21 @@ function render(){
   var live = null;
   if (chaseOn) {
     var left = rainCut ? Math.max(0, restartOvers) : Math.max(0, chaseOvers - bowled);
-    if (rainEnded) left = Math.max(0, (rainCut ? restartOvers : chaseOvers) - bowled);
     var used = Math.max(0, R2 - resource(left, t2wickets).value);
-    var factor = matchFactor(S, scheduled, G50);
-    var usedLift = liftUsed(used, R2, factor);
-    var livePar = Math.floor(R1 === 0 ? 0 : S * usedLift / R1);
+    var livePar = Math.floor(R1 === 0 ? 0 : S * used / R1);
     var label = t2score > livePar ? "ahead" : (t2score < livePar ? "behind" : "level");
-    live = { livePar: livePar, label: label, delta: Math.abs(t2score - livePar), score: t2score, left: left };
-    lines.push("Overs left " + left + ". Table par " + Math.floor(R1 === 0 ? 0 : S * used / R1) + ". High-score lift " + fmt(factor) + " makes par " + livePar + ". Score " + t2score + " is " + label + ".");
+    live = { livePar: livePar, label: label, delta: Math.abs(t2score - livePar), score: t2score, left: left, bowledLabel: bowledParsed.spoken };
+    lines.push("Overs left " + fmt(left) + ". Resources used " + fmt(used) + ". Par " + livePar + ". Score " + t2score + " is " + label + ".");
   }
   var mood = "answer", verdict = "Chase has not started, so nobody is in front yet.";
   var big = target;
-  var plain = "To win, in " + chaseOvers + " overs. A tie is " + par + ".";
+  var plain = "To win, in " + chaseLabel + " overs. A tie is " + par + ".";
+  var callGap = 15;
+  function tooClose(delta) { return delta <= callGap; }
+  function closeCall() {
+    mood = "answer level";
+    verdict = "Too close to call.";
+  }
   if (rainEnded && !chaseOn) {
     mood = "answer";
     verdict = "No result. Rain ended the game before the chase.";
@@ -367,11 +451,13 @@ function render(){
     plain = "The chase never started.";
   } else if (rainEnded && live) {
     big = live.livePar;
-    plain = "Rain ended the game after " + bowled + " overs. A tie was " + live.livePar + ".";
-    if (live.label === "level") {
-      mood = "answer level";
-      verdict = "Tie. Rain ended the game level.";
-      plain += " The chase was level with that.";
+    plain = "Rain ended the game after " + live.bowledLabel + " overs. A tie was " + live.livePar + ".";
+    if (live.left > 0.05) plain += " " + fmt(live.left) + " overs were still left, so the wickets still count. If the chase was cut to the overs already bowled, change Overs the chase will get.";
+    if (live.label === "level" || tooClose(live.delta)) {
+      closeCall();
+      plain += live.label === "level"
+        ? " The chase was level. That is not a result to send. Television can move this either way."
+        : " The chase was only " + live.delta + " " + (live.label === "ahead" ? "ahead" : "behind") + ". That is not enough. Television can give this the other way.";
     } else if (live.label === "ahead") {
       mood = yourSide === "chase" ? "answer win" : "answer lose";
       verdict = yourSide === "chase" ? "Your team has won." : "Your team has lost.";
@@ -381,21 +467,23 @@ function render(){
       verdict = yourSide === "first" ? "Your team has won." : "Your team has lost.";
       plain += " The chase was " + live.delta + " behind that.";
     }
-  } else if (live && live.score >= target) {
+  } else if (live && live.score >= target && !tooClose(live.score - par)) {
     mood = yourSide === "chase" ? "answer win" : "answer lose";
     verdict = yourSide === "chase" ? "Your team has won." : "Your team has lost. The chase is already home.";
-  } else if (live && t2wickets >= 10 && live.score < target) {
+  } else if (live && t2wickets >= 10 && live.score + callGap < target) {
     mood = yourSide === "first" ? "answer win" : "answer lose";
     verdict = yourSide === "first" ? "Your team has won. The chase is all out." : "Your team is all out.";
+  } else if (live && (live.label === "level" || tooClose(live.delta) || (t2wickets >= 10 && live.score < target))) {
+    closeCall();
   } else if (live) {
-    if (live.label === "level") { mood = "answer level"; verdict = "Level. A tie if it ended now."; }
-    else if (yourSide === "chase") { mood = live.label === "ahead" ? "answer win" : "answer lose"; verdict = live.label === "ahead" ? "Your team is winning." : "Your team is losing."; }
+    if (yourSide === "chase") { mood = live.label === "ahead" ? "answer win" : "answer lose"; verdict = live.label === "ahead" ? "Your team is winning." : "Your team is losing."; }
     else { mood = live.label === "ahead" ? "answer lose" : "answer win"; verdict = live.label === "ahead" ? "Your team is losing." : "Your team is winning."; }
   }
   if (!rainEnded && live) {
-    if (live.label === "level") plain += " The chase is level with the par of " + live.livePar + ".";
+    if (mood === "answer level") plain += " The chase is " + (live.label === "level" ? "level with" : live.delta + " from") + " the par of " + live.livePar + ". Too close to call a winner.";
     else plain += " The chase is " + live.delta + " " + (live.label === "ahead" ? "ahead of" : "behind") + " the par of " + live.livePar + ".";
   }
+  if (officialNote) plain += " " + officialNote;
   $("top").className = mood;
   $("need").textContent = side + ": " + verdict;
   $("big").textContent = big;
